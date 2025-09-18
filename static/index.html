@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Article Summarizer</title>
+
+<!-- Markdown renderer + sanitizer -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
+
+<style>
+  :root{
+    --ink:#0f2d2d; --teal:#1e7f72; --blue:#335c81;
+    --offwhite:#f7f7f5; --muted:#718096; --card:#ffffff;
+    --ring:#77c9b5;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--offwhite);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial}
+
+  /* Header / Search */
+  header{
+    position:sticky;top:0;z-index:10;
+    background:linear-gradient(180deg,var(--offwhite),#fafafa00);
+    border-bottom:1px solid #eaeaea80; backdrop-filter: blur(6px);
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:18px 18px 10px}
+  .tagline{font-weight:600;color:var(--blue);margin:0 0 10px}
+
+  .searchbar{
+    display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center
+  }
+  input[type="text"], input[type="search"]{
+    padding:12px 14px;border:1px solid #e2e8f0;border-radius:12px;background:#fff;color:var(--ink);
+    outline:2px solid transparent;outline-offset:2px;
+  }
+  input:focus{outline:2px solid var(--ring);border-color:var(--ring)}
+  .btn{
+    padding:12px 16px;border-radius:12px;border:0;cursor:pointer;
+    color:white;background:linear-gradient(135deg,var(--teal),var(--blue));
+    box-shadow:0 6px 18px #1e7f7240; transition:transform .08s ease, box-shadow .18s ease;
+  }
+  .btn:hover{transform:translateY(-1px);box-shadow:0 10px 22px #335c8140}
+  .domain{width:220px}
+
+  /* Source checkboxes row */
+  .filters{
+    margin-top:8px; display:flex; gap:14px; align-items:center; flex-wrap:wrap;
+    color:#334; font-size:13px;
+  }
+  .filters .group{
+    display:flex; gap:12px; align-items:center; background:#ffffffaa; padding:8px 10px;
+    border:1px solid #e6ecef; border-radius:12px;
+  }
+  .filters input[type="checkbox"]{
+    accent-color: var(--teal);
+    width:16px;height:16px; cursor:pointer;
+  }
+
+  /* Results grid */
+  .results{max-width:1180px;margin:18px auto;padding:0 18px 40px}
+  .grid{display:grid; gap:16px; grid-template-columns:repeat(3,1fr)}
+  @media (max-width:1024px){ .grid{grid-template-columns:repeat(2,1fr)} }
+  @media (max-width:720px){ .grid{grid-template-columns:1fr} }
+
+  /* Cards */
+  .card{
+    background:var(--card);border-radius:16px;padding:18px 18px 14px;
+    box-shadow:0 1px 0 #00000008, 0 10px 20px #00000006; border:1px solid #0000000e;
+    transition:transform .08s ease, box-shadow .18s ease;
+  }
+  .card:hover{transform:translateY(-2px); box-shadow:0 14px 26px #00000012}
+  .card h3{ margin:0 0 10px;font-size:20px;line-height:1.25;font-weight:700;color:var(--teal) }
+  .card h3 a{color:inherit;text-decoration:none}
+  .card h3 a:hover{text-decoration:underline}
+
+  /* Markdown styling inside summary */
+  .markdown h1,.markdown h2{font-size:18px;margin:12px 0 6px;color:var(--ink)}
+  .markdown h3{font-size:16px;margin:10px 0 4px;color:var(--ink)}
+  .markdown p{margin:8px 0}
+  .markdown ul, .markdown ol{margin:6px 0 6px 20px}
+  .markdown li{margin:4px 0}
+  .markdown code{background:#f3f6f8;padding:2px 6px;border-radius:6px}
+
+  .summary{ position:relative; overflow:hidden; transition:max-height .25s ease; }
+  .summary.clamped{ max-height:340px; }
+  .summary.clamped::after{
+    content:""; position:absolute; bottom:0; left:0; right:0; height:70px;
+    background:linear-gradient(180deg,rgba(255,255,255,0), var(--card));
+  }
+
+  .meta{margin-top:10px; display:flex; gap:10px; align-items:center; color:var(--muted); font-size:13px}
+  .more{
+    margin-top:10px; background:transparent; color:var(--blue); border:1px solid #e1e7ef;
+    padding:8px 12px; border-radius:10px; cursor:pointer;
+  }
+
+  .toast{ display:none; margin:12px auto; max-width:1180px; padding:12px 14px;
+    border:1px solid #f0caca; color:#8b2e2e; background:#fff5f5; border-radius:12px }
+
+  /* Skeletons */
+  .loading .skel{
+    height:14px; background:linear-gradient(90deg,#eef2f4,#f7f9fb,#eef2f4); background-size:200% 100%;
+    animation:shimmer 1.25s infinite; border-radius:8px; margin:8px 0;
+  }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+</style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <p class="tagline">Find the <em>3 most useful</em> articles—summarized for you.</p>
+
+      <form id="searchForm" class="searchbar">
+        <input id="q" type="search" placeholder="Search a topic…" aria-label="Search query" required />
+        <input id="domain" class="domain" type="text" placeholder="Limit to domain (optional e.g., ieee.org)" />
+        <button class="btn" type="submit">Search</button>
+      </form>
+
+      <!-- Source toggles -->
+      <div class="filters" aria-label="Source filters">
+        <span>Include sources:</span>
+        <div class="group">
+          <label><input type="checkbox" id="srcWeb" checked> Web</label>
+          <label><input type="checkbox" id="srcNews" checked> News</label>
+          <label><input type="checkbox" id="srcReddit" checked> Reddit</label>
+          <label><input type="checkbox" id="srcTwitter" checked> Twitter</label>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div id="toast" class="toast"></div>
+
+  <main class="results">
+    <div id="grid" class="grid" aria-live="polite" aria-busy="false"></div>
+  </main>
+
+<script>
+const $ = sel => document.querySelector(sel);
+const grid = $("#grid");
+const toast = $("#toast");
+const api = "/search";
+
+function setToast(msg){ toast.textContent = msg; toast.style.display = msg ? 'block' : 'none'; }
+
+function cardSkeleton(){
+  const div = document.createElement('div');
+  div.className='card loading';
+  div.innerHTML = `
+    <h3 class="skel" style="height:22px;width:80%"></h3>
+    <div class="skel" style="height:14px;width:96%"></div>
+    <div class="skel" style="height:14px;width:92%"></div>
+    <div class="skel" style="height:14px;width:88%"></div>
+    <div class="skel" style="height:14px;width:60%"></div>
+  `;
+  return div;
+}
+
+function safeHost(url){
+  try { return new URL(url).hostname; } catch { return ""; }
+}
+
+function renderArticles(articles){
+  grid.innerHTML = "";
+  if(!articles || !articles.length){
+    setToast("No articles found. Try refining your query.");
+    return;
+  }
+  setToast("");
+
+  for(const a of articles){
+    const card = document.createElement('div');
+    card.className = 'card';
+    const title = a.title || 'Untitled';
+    const url = a.url || '#';
+    const summary = a.summary || 'No summary available.';
+
+    // Markdown -> safe HTML
+    const html = DOMPurify.sanitize(marked.parse(summary));
+
+    card.innerHTML = `
+      <h3><a href="${url}" target="_blank" rel="noopener">${title}</a></h3>
+      <div class="summary clamped markdown">${html}</div>
+      <div class="meta"><span>${safeHost(url)}</span></div>
+      <button class="more" type="button">Show more</button>
+    `;
+
+    const sum = card.querySelector('.summary');
+    const btn = card.querySelector('.more');
+    btn.addEventListener('click', () => {
+      const clamped = sum.classList.toggle('clamped');
+      btn.textContent = clamped ? 'Show more' : 'Show less';
+    });
+
+    grid.appendChild(card);
+  }
+}
+
+document.getElementById('searchForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const query = document.getElementById('q').value.trim();
+  const domain = document.getElementById('domain').value.trim();
+  if(!query) return;
+
+  grid.innerHTML = ""; for(let i=0;i<3;i++) grid.appendChild(cardSkeleton());
+  grid.setAttribute('aria-busy','true');
+
+  try{
+    const body = { query, top_k: 3 };
+    if(domain) body.domain_only = domain;
+
+    // collect selected sources
+    const sources = [];
+    if ($("#srcWeb")?.checked) sources.push("web");
+    if ($("#srcNews")?.checked) sources.push("news");
+    if ($("#srcReddit")?.checked) sources.push("reddit");
+    if ($("#srcTwitter")?.checked) sources.push("twitter");
+    if (sources.length) body.sources = sources;
+
+    const res = await fetch(api, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    renderArticles(data.articles || []);
+  }catch(err){
+    console.error(err);
+    setToast("Something went wrong. Please try again.");
+    grid.innerHTML = "";
+  }finally{
+    grid.setAttribute('aria-busy','false');
+  }
+});
+</script>
+</body>
+</html>
