@@ -1,0 +1,16 @@
+New-Item -Path .gitignore -ItemType File -Force | Out-Null
+@"
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+.venv/
+venv/
+
+logs/
+*.log
+
+.DS_Store
+Thumbs.db
+"@ | Set-Content .gitignore -NoNewline

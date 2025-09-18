@@ -87,6 +87,7 @@
   .summary.clamped::after{
     content:""; position:absolute; bottom:0; left:0; right:0; height:70px;
     background:linear-gradient(180deg,rgba(255,255,255,0), var(--card));
+  .summary.expanded {max-height: none;}
   }
 
   .meta{margin-top:10px; display:flex; gap:10px; align-items:center; color:var(--muted); font-size:13px}
@@ -189,8 +190,16 @@ function renderArticles(articles){
     const sum = card.querySelector('.summary');
     const btn = card.querySelector('.more');
     btn.addEventListener('click', () => {
-      const clamped = sum.classList.toggle('clamped');
-      btn.textContent = clamped ? 'Show more' : 'Show less';
+      const isClamped = sum.classList.contains('clamped');
+      if (isClamped) {
+        sum.classList.remove('clamped');
+        sum.classList.add('expanded');
+        btn.textContent = 'Show less';
+      } else {
+        sum.classList.add('clamped');
+        sum.classList.remove('expanded');
+        btn.textContent = 'Show more';
+      }
     });
 
     grid.appendChild(card);
