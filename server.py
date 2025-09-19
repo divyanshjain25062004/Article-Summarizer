@@ -29,7 +29,14 @@ class SearchBody(BaseModel):
     query: str
     top_k: int = 3
     domain_only: str | None = None  # e.g., "ieee.org"
+    sources: list[str] | None = None
+
 
 @app.post("/search")
 def search(body: SearchBody):
-    return agent_run(body.query, top_k=body.top_k, domain_only=body.domain_only)
+    return agent_run(
+        body.query,
+        top_k=body.top_k,
+        domain_only=body.domain_only,
+        sources=body.sources,
+    )
