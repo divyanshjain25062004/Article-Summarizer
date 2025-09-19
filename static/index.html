@@ -82,8 +82,14 @@
     padding:13px 26px;border-radius:14px;border:0;cursor:pointer;font-weight:600;font-size:1rem;
     color:#fff;background:linear-gradient(135deg,var(--primary),var(--accent));
     box-shadow:0 12px 28px rgba(37,99,235,.3);transition:transform .12s ease,box-shadow .18s ease;
+    display:inline-flex;align-items:center;justify-content:center;gap:10px;
   }
   .btn:hover{transform:translateY(-1px);box-shadow:0 16px 32px rgba(37,99,235,.28)}
+  .btn.loading{opacity:.75;box-shadow:none;cursor:progress;pointer-events:none}
+  .btn .spinner{
+    width:16px;height:16px;border-radius:999px;border:2px solid rgba(255,255,255,.55);
+    border-top-color:#fff;animation:spin .75s linear infinite;display:inline-block;
+  }
 
   .filters{
     margin-top:16px;display:flex;flex-wrap:wrap;gap:14px;align-items:center;color:var(--muted);font-size:.85rem;
@@ -152,6 +158,16 @@
   .toast{display:none;margin:16px auto 0;max-width:1180px;padding:14px 16px;border-radius:16px;
     border:1px solid rgba(248,113,113,.35);background:rgba(254,226,226,.75);color:#991b1b;font-weight:500}
 
+  .status{display:none;margin:16px auto 0;max-width:1180px;padding:14px 18px;border-radius:16px;font-weight:500;}
+  .status[data-tone="info"]{background:rgba(226,232,240,.7);color:var(--ink);border:1px solid rgba(148,163,184,.3)}
+  .status[data-tone="success"]{background:rgba(187,247,208,.7);color:#166534;border:1px solid rgba(134,239,172,.8)}
+  .status[data-tone="error"]{background:rgba(254,226,226,.75);color:#991b1b;border:1px solid rgba(248,113,113,.45)}
+
+  .empty-state{
+    padding:32px;border-radius:20px;text-align:center;font-weight:500;font-size:1rem;color:var(--muted);
+    background:rgba(255,255,255,.82);border:1px dashed rgba(148,163,184,.45);
+  }
+
   .loading{position:relative;overflow:hidden}
   .loading .skel{
     height:14px;border-radius:8px;margin:10px 0;
@@ -159,6 +175,7 @@
     background-size:220% 100%;animation:shimmer 1.4s infinite ease;
   }
   @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+  @keyframes spin{to{transform:rotate(1turn)}}
 </style>
 </head>
 <body>
@@ -196,7 +213,8 @@
     </div>
   </header>
 
-  <div id="toast" class="toast"></div>
+  <div id="toast" class="toast" role="alert"></div>
+  <div id="status" class="status" role="status" aria-live="polite"></div>
 
   <main class="results">
     <div id="grid" class="grid" aria-live="polite" aria-busy="false"></div>
@@ -206,9 +224,34 @@
 const $ = sel => document.querySelector(sel);
 const grid = $("#grid");
 const toast = $("#toast");
+const status = $("#status");
 const api = "/search";
+const searchForm = document.getElementById('searchForm');
+const searchBtn = searchForm.querySelector('button[type="submit"]');
+const defaultBtnContent = searchBtn.innerHTML;
+let lastArticles = [];
 
 function setToast(msg){ toast.textContent = msg; toast.style.display = msg ? 'block' : 'none'; }
+
+function setStatus(msg, tone = 'info'){
+  if(!status) return;
+  status.textContent = msg;
+  status.dataset.tone = tone;
+  status.style.display = msg ? 'block' : 'none';
+}
+
+function setLoadingState(isLoading){
+  if(!searchBtn) return;
+  if(isLoading){
+    searchBtn.disabled = true;
+    searchBtn.classList.add('loading');
+    searchBtn.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>Searching…</span>';
+  } else {
+    searchBtn.disabled = false;
+    searchBtn.classList.remove('loading');
+    searchBtn.innerHTML = defaultBtnContent;
+  }
+}
 
 function cardSkeleton(){
   const div = document.createElement('div');
@@ -230,10 +273,14 @@ function safeHost(url){
 function renderArticles(articles){
   grid.innerHTML = "";
   if(!articles || !articles.length){
-    setToast("No articles found. Try refining your query.");
+    grid.innerHTML = '<div class="empty-state">No articles found. Try refining your query.</div>';
+    setToast("");
+    setStatus("No articles found. Try refining your query.", 'info');
+    lastArticles = [];
     return;
   }
   setToast("");
+  setStatus(`Showing ${articles.length} curated ${articles.length === 1 ? 'summary' : 'summaries'}.`, 'success');
 
   for(const a of articles){
     const card = document.createElement('div');
@@ -270,15 +317,21 @@ function renderArticles(articles){
 
     grid.appendChild(card);
   }
+  lastArticles = Array.isArray(articles) ? articles.slice(0) : [];
 }
 
-document.getElementById('searchForm').addEventListener('submit', async (e) => {
+searchForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const query = document.getElementById('q').value.trim();
   const domain = document.getElementById('domain').value.trim();
   if(!query) return;
 
-  grid.innerHTML = ""; for(let i=0;i<3;i++) grid.appendChild(cardSkeleton());
+  setToast("");
+  setStatus("Fetching results…", 'info');
+  setLoadingState(true);
+
+  grid.innerHTML = "";
+  for(let i=0;i<3;i++) grid.appendChild(cardSkeleton());
   grid.setAttribute('aria-busy','true');
 
   try{
@@ -304,10 +357,22 @@ document.getElementById('searchForm').addEventListener('submit', async (e) => {
     renderArticles(data.articles || []);
   }catch(err){
     console.error(err);
+    const hadPrevious = lastArticles.length > 0;
+    if(hadPrevious){
+      renderArticles(lastArticles);
+    } else {
+      grid.innerHTML = '<div class="empty-state">We hit a snag fetching results. Please try again shortly.</div>';
+    }
     setToast("Something went wrong. Please try again.");
-    grid.innerHTML = "";
+    setStatus(
+      hadPrevious
+        ? "We couldn't fetch new results. Showing the last successful summaries."
+        : "We couldn't fetch new results. Please try again shortly.",
+      'error'
+    );
   }finally{
     grid.setAttribute('aria-busy','false');
+    setLoadingState(false);
   }
 });
 </script>
