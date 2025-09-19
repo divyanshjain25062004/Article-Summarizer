@@ -1,46 +1,47 @@
-Setup
+# Article Summarizer
 
-Clone the repo:
+## Getting started
 
+Clone the repository and install dependencies inside a virtual environment:
+
+```bash
 git clone https://github.com/divyanshjain25062004/Article-Summarizer.git
 cd Article-Summarizer
-
-
-Create virtual environment:
-
 python -m venv .venv
-.venv\Scripts\activate  # on Windows
-source .venv/bin/activate  # on macOS/Linux
-
-
-Install dependencies:
-
+source .venv/bin/activate            # ``.venv\\Scripts\\activate`` on Windows
 pip install -r requirements.txt
+```
 
+Configure an OpenAI-compatible API key so the summarisation tool can talk to
+the model:
 
-Set your OpenAI API key:
+```bash
+export OPENAI_API_KEY="sk-..."         # use ``setx`` on Windows
+```
 
-setx OPENAI_API_KEY "your_api_key_here"   # Windows
-export OPENAI_API_KEY="your_api_key_here" # macOS/Linux
+Run the FastAPI server and open the interface:
 
-
-Run the server:
-
+```bash
 uvicorn server:app --reload
+# visit http://127.0.0.1:8000
+```
 
+## Agentic architecture
 
-Open in browser:
+The project now ships as a lightweight agentic framework where tools are
+first-class citizens and a planner chooses which capability to apply next.
 
-http://127.0.0.1:8000
+* **`agent.py`** – Defines reusable agent primitives (`ToolSpec`,
+  `AgentState`, and the generic `Agent` loop) plus the concrete
+  `ArticleSummarizerAgent` wiring.
+* **`tools.py`** – Implements search, extraction, and ranking primitives that
+  are wrapped as agent tools.
+* **`llm_client.py` / `prompts.py`** – Provide the LLM client and structured
+  prompting used by the summarisation tool.
+* **`server.py`** – FastAPI application exposing the `/search` endpoint and
+  serving the frontend in `static/`.
+* **`logs/`** – Populated at runtime with agent traces for debugging.
 
-Project Structure
-Agentic-Strater/
-│── agent.py          # Orchestrates search → fetch → summarize
-│── tools.py          # Search, filtering, extraction, ranking
-│── llm_client.py     # Handles LLM summarization calls
-│── prompts.py        # Prompt templates for structured summaries
-│── server.py         # FastAPI server (API + frontend)
-│── static/           # Frontend (HTML/CSS/JS)
-│── logs/             # Debug traces and error logs
-│── requirements.txt  # Dependencies
-│── README.md         # This file
+Because tools and planners are modular, you can register additional actions,
+swap in a different planner (for instance an LLM-driven one), or orchestrate
+multiple specialised agents while reusing the same building blocks.
